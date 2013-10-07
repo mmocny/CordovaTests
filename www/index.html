@@ -3,28 +3,19 @@
   <head>
     <title>Cordova tests</title>
     <link rel="stylesheet" type="text/css" href="assets/topcoat-0.7.5/css/topcoat-mobile-light.min.css">
-    <link rel="stylesheet" type="text/css" href="assets/jasmine-2.0.0-rc2/jasmine.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="assets/jasmine-2.0.0-rc3/jasmine.css" media="screen">
     <link rel="stylesheet" type="text/css" href="main.css" media="screen">
     <script type="text/javascript" src="assets/jasmine-2.0.0-rc2/jasmine.js"></script>
+    <script type="text/javascript" src="assets/jasmine-2.0.0-rc2/jasmine-html.js"></script>
+    <script type="text/javascript" src="assets/jasmine-2.0.0-rc2/boot.js"></script>
     <script type="text/javascript" src="cordova.js"></script>
     <script type="text/javascript" src="main.js"></script>
   </head>
 
   <body>
-    <div id="info">
-      <h4 id="platform">Platform: unknown</h4>
-      <h4 id="version">Version: unknown</h4>
-      <h4 id="uuid">UUID: unknown</h4>
-      <h4 id="model">Model: unknown</h4>
-      <h4 id="width">Width: unknown</h4>
-      <h4 id="height">Height: unknown</h4>
-      <h4 id="color-depth">Color Depth: unknown</h4>
-      <h4 id="user-agent">User-Agent: unknown</h4>
-    </div>
-
-    <div id="actions">
-      <a id="auto_tests" class="topcoat-button--cta" href="auto_tests.html">Auto Tests</a>
-      <a id="manual_tests" class="topcoat-button--cta" href="manual_tests.html">Manual Tests</a>
-    </div>
+    <div id='title'></div>
+    <div id='content'></div>
+    <div id='actions'></div>
+    <div id='log'></div>
   </body>
 </html>

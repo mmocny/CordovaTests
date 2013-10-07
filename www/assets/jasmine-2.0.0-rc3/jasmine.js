@@ -30,7 +30,7 @@ function getJasmineRequireObj() {
 }
 
 getJasmineRequireObj().core = function(jRequire) {
-  j$ = {};
+  var j$ = {};
 
   jRequire.base(j$);
   j$.util = jRequire.util();
@@ -48,7 +48,7 @@ getJasmineRequireObj().core = function(jRequire) {
   j$.pp = jRequire.pp(j$);
   j$.QueueRunner = jRequire.QueueRunner();
   j$.ReportDispatcher = jRequire.ReportDispatcher();
-  j$.Spec = jRequire.Spec();
+  j$.Spec = jRequire.Spec(j$);
   j$.SpyStrategy = jRequire.SpyStrategy();
   j$.Suite = jRequire.Suite();
   j$.Timer = jRequire.Timer();
@@ -94,7 +94,6 @@ getJasmineRequireObj().base = function(j$) {
     throw new Error("unimplemented method");
   };
 
-  j$.DEFAULT_UPDATE_INTERVAL = 250;
   j$.MAX_PRETTY_PRINT_DEPTH = 40;
   j$.DEFAULT_TIMEOUT_INTERVAL = 5000;
 
@@ -221,7 +220,7 @@ getJasmineRequireObj().util = function() {
   return util;
 };
 
-getJasmineRequireObj().Spec = function() {
+getJasmineRequireObj().Spec = function(j$) {
   function Spec(attrs) {
     this.encounteredExpectations = false;
     this.expectationFactory = attrs.expectationFactory;
@@ -281,14 +280,14 @@ getJasmineRequireObj().Spec = function() {
         var timeout = Function.prototype.apply.apply(self.timer.setTimeout, [j$.getGlobal(), [function() {
           onException(new Error('timeout'));
           done();
-        }, 10000]]);
+        }, j$.DEFAULT_TIMEOUT_INTERVAL]]);
 
         var callDone = function() {
           Function.prototype.apply.apply(self.timer.clearTimeout, [j$.getGlobal(), [timeout]]);
           done();
         };
 
-        fn(callDone); //TODO: do we care about more than 1 arg?
+        fn.call(this, callDone); //TODO: do we care about more than 1 arg?
       };
     }
 
@@ -382,6 +381,8 @@ getJasmineRequireObj().Env = function(j$) {
     var realClearTimeout = j$.getGlobal().clearTimeout;
     this.clock = new j$.Clock(global, new j$.DelayedFunctionScheduler());
 
+    var runnableLookupTable = {};
+
     var spies = [];
 
     this.currentSpec = null;
@@ -450,7 +451,7 @@ getJasmineRequireObj().Env = function(j$) {
     };
 
     var getSpecName = function(spec, currentSuite) {
-      return currentSuite.getFullName() + ' ' + spec.description + '.';
+      return currentSuite.getFullName() + ' ' + spec.description;
     };
 
     // TODO: we may just be able to pass in the fn instead of wrapping here
@@ -519,6 +520,8 @@ getJasmineRequireObj().Env = function(j$) {
         timer: {setTimeout: realSetTimeout, clearTimeout: realClearTimeout}
       });
 
+      runnableLookupTable[spec.id] = spec;
+
       if (!self.specFilter(spec)) {
         spec.disable();
       }
@@ -557,10 +560,11 @@ getJasmineRequireObj().Env = function(j$) {
       completeCallback: function() {}, // TODO - hook this up
       resultCallback: function() {} // TODO - hook this up
     });
+    runnableLookupTable[this.topSuite.id] = this.topSuite;
     this.currentSuite = this.topSuite;
 
     this.suiteFactory = function(description) {
-      return new suiteConstructor({
+      var suite = new suiteConstructor({
         env: self,
         id: self.nextSuiteId(),
         description: description,
@@ -571,13 +575,25 @@ getJasmineRequireObj().Env = function(j$) {
           self.reporter.suiteDone(attrs);
         }
       });
+
+      runnableLookupTable[suite.id] = suite;
+      return suite;
     };
 
-    this.execute = function() {
+    this.execute = function(runnablesToRun) {
+      runnablesToRun = runnablesToRun || [this.topSuite.id];
+
+      var allFns = [];
+      for(var i = 0; i < runnablesToRun.length; i++) {
+        var runnable = runnableLookupTable[runnablesToRun[i]];
+        allFns.push((function(runnable) { return function(done) { runnable.execute(done); }; })(runnable));
+      }
+
       this.reporter.jasmineStarted({
         totalSpecsDefined: totalSpecsDefined
       });
-      this.topSuite.execute(self.reporter.jasmineDone);
+
+      queueRunnerFactory({fns: allFns, onComplete: this.reporter.jasmineDone});
     };
 
     this.spyOn = function(obj, methodName) {
@@ -630,12 +646,12 @@ getJasmineRequireObj().Env = function(j$) {
 
   // TODO: move this to closure
   Env.prototype.nextSpecId = function() {
-    return this.nextSpecId_++;
+    return 'spec' + this.nextSpecId_++;
   };
 
   // TODO: move this to closure
   Env.prototype.nextSuiteId = function() {
-    return this.nextSuiteId_++;
+    return 'suite' + this.nextSuiteId_++;
   };
 
   // TODO: move this to closure
@@ -889,18 +905,19 @@ getJasmineRequireObj().Clock = function() {
         setInterval: setInterval,
         clearInterval: clearInterval
       },
-      timer = realTimingFunctions,
       installed = false;
 
     self.install = function() {
-      installed = true;
+      replace(global, fakeTimingFunctions);
       timer = fakeTimingFunctions;
+      installed = true;
     };
 
     self.uninstall = function() {
       delayedFunctionScheduler.reset();
-      installed = false;
+      replace(global, realTimingFunctions);
       timer = realTimingFunctions;
+      installed = false;
     };
 
     self.setTimeout = function(fn, delay, params) {
@@ -935,7 +952,7 @@ getJasmineRequireObj().Clock = function() {
       if (installed) {
         delayedFunctionScheduler.tick(millis);
       } else {
-        throw new Error("Mock clock is not installed, use jasmine.Clock.useMock()");
+        throw new Error("Mock clock is not installed, use jasmine.getEnv().clock.install()");
       }
     };
 
@@ -945,7 +962,13 @@ getJasmineRequireObj().Clock = function() {
       //if these methods are polyfilled, apply will be present
       //TODO: it may be difficult to load the polyfill before jasmine loads
       //(env should be new-ed inside of onload)
-      return !(global.setTimeout || global.setInterval).apply;
+      return !(realTimingFunctions.setTimeout || realTimingFunctions.setInterval).apply;
+    }
+
+    function replace(dest, source) {
+      for (var prop in source) {
+        dest[prop] = source[prop];
+      }
     }
 
     function setTimeout(fn, delay) {
@@ -981,8 +1004,8 @@ getJasmineRequireObj().DelayedFunctionScheduler = function() {
 
     self.tick = function(millis) {
       millis = millis || 0;
-      runFunctionsWithinRange(currentTime, currentTime + millis);
       currentTime = currentTime + millis;
+      runFunctionsWithinRange(currentTime - millis, currentTime);
     };
 
     self.scheduleFunction = function(funcToCall, millis, params, recurring, timeoutKey, runAtMillis) {
@@ -1323,7 +1346,7 @@ getJasmineRequireObj().pp = function(j$) {
         this.emitScalar('Date(' + value + ')');
       } else if (value.__Jasmine_been_here_before__) {
         this.emitScalar('<circular reference: ' + (j$.isArray_(value) ? 'Array' : 'Object') + '>');
-      } else if (j$.isArray_(value) || typeof value == 'object') {
+      } else if (j$.isArray_(value) || j$.isA_('Object', value)) {
         value.__Jasmine_been_here_before__ = true;
         if (j$.isArray_(value)) {
           this.emitArray(value);
@@ -1433,6 +1456,7 @@ getJasmineRequireObj().QueueRunner = function() {
     this.clearStack = attrs.clearStack || function(fn) {fn();};
     this.onException = attrs.onException || function() {};
     this.catchException = attrs.catchException || function() { return true; };
+    this.userContext = {};
   }
 
   QueueRunner.prototype.execute = function() {
@@ -1461,7 +1485,7 @@ getJasmineRequireObj().QueueRunner = function() {
 
     function attemptSync(fn) {
       try {
-        fn.call(self);
+        fn.call(self.userContext);
       } catch (e) {
         handleException(e);
       }
@@ -1471,7 +1495,7 @@ getJasmineRequireObj().QueueRunner = function() {
       var next = function () { self.run(fns, iterativeIndex + 1); };
 
       try {
-        fn.call(self, next);
+        fn.call(self.userContext, next);
       } catch (e) {
         handleException(e);
         next();
@@ -1550,16 +1574,17 @@ getJasmineRequireObj().SpyStrategy = function() {
       return getSpy();
     };
 
-    this.callReturn = function(value) {
+    this.returnValue = function(value) {
       plan = function() {
         return value;
       };
       return getSpy();
     };
 
-    this.callThrow = function(something) {
+    this.throwError = function(something) {
+      var error = (something instanceof Error) ? something : new Error(something);
       plan = function() {
-        throw something;
+        throw error;
       };
       return getSpy();
     };
@@ -2114,21 +2139,26 @@ getJasmineRequireObj().toHaveBeenCalledWith = function(j$) {
       compare: function() {
         var args = Array.prototype.slice.call(arguments, 0),
           actual = args[0],
-          expectedArgs = args.slice(1);
+          expectedArgs = args.slice(1),
+          result = { pass: false };
 
         if (!j$.isSpy(actual)) {
           throw new Error('Expected a spy, but got ' + j$.pp(actual) + '.');
         }
 
-        return {
-          pass: util.contains(actual.calls.allArgs(), expectedArgs)
-        };
-      },
-      message: function(actual) {
-        return {
-          affirmative: "Expected spy " + actual.and.identity() + " to have been called.",
-          negative: "Expected spy " + actual.and.identity() + " not to have been called."
-        };
+        if (!actual.calls.any()) {
+          result.message = "Expected spy " + actual.and.identity() + " to have been called with " + j$.pp(expectedArgs) + " but it was never called.";
+          return result;
+        }
+
+        if (util.contains(actual.calls.allArgs(), expectedArgs)) {
+          result.pass = true;
+          result.message = "Expected spy " + actual.and.identity() + " not to have been called with " + j$.pp(expectedArgs) + " but it was.";
+        } else {
+          result.message = "Expected spy " + actual.and.identity() + " to have been called with " + j$.pp(expectedArgs) + " but actual calls were " + j$.pp(actual.calls.allArgs()).replace(/^\[ | \]$/g, '') + ".";
+        }
+
+        return result;
       }
     };
   }
