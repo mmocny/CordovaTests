@@ -5,9 +5,13 @@
 'use strict';
 
 function getURLParameter(name) {
-    return decodeURIComponent(
-        (new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [,""])[1].replace(/\+/g, '%20')
-      ) || null;
+  /*var queryString = new jasmine.QueryString({
+    getWindowLocation: function() { return window.location; }
+  });
+  return queryString.getParam(name);*/
+  return decodeURIComponent(
+      (new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [,""])[1].replace(/\+/g, '%20')
+    ) || null;
 }
 
 function getMode() {
@@ -20,7 +24,7 @@ function setTitle(title) {
 }
 
 function createButton(title, callback) {
-  var actionBar = document.getElementById('actions');
+  var content = document.getElementById('content');
   var div = document.createElement('div');
   var button = document.createElement('a');
   button.textContent = title;
@@ -30,7 +34,7 @@ function createButton(title, callback) {
   };
   button.classList.add('topcoat-button');
   div.appendChild(button);
-  actionBar.appendChild(div);
+  content.appendChild(div);
 }
 
 function logger() {
@@ -79,16 +83,21 @@ function runAutoTests() {
   setTitle('Auto Tests');
   createButton('Back', function() { location.href = 'index.html'; });
 
-  var content = document.getElementById('content');
-  var jasmineEnv = jasmine.getEnv();
-  var htmlReporter = new jasmine.HtmlReporter('content');
-  jasmineEnv.updateInterval = 250;
-  jasmineEnv.addReporter(htmlReporter);
-  jasmineEnv.specFilter = function(spec) {
-    return htmlReporter.specFilter(spec);
-  };
-  logger(jasmineEnv.versionString());
-  jasmineEnv.execute();
+  // TODO: get all installed plugins
+  var plugins = ['org.apache.cordova.device'];
+
+  plugins.forEach(function(id) {
+    var tests;
+    try {
+      tests = cordova.require(id + '.tests');
+    } catch(ex) {
+      return;
+    }
+    tests.init();
+  });
+
+  var test = cordova.require('org.apache.cordova.test.test');
+  test.runAutoTests();
 }
 
 /******************************************************************************/
@@ -102,7 +111,7 @@ function runManualTests() {
 
 function runUnknownMode() {
   setTitle('Unknown Mode');
-  createButton('Back', function() { location.href = 'index.html'; });
+  createButton('Reset', function() { location.href = 'index.html'; });
 }
 
 /******************************************************************************/
