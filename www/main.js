@@ -84,7 +84,10 @@ function runAutoTests() {
   createButton('Back', function() { location.href = 'index.html'; });
 
   // TODO: get all installed plugins
-  var plugins = ['org.apache.cordova.device'];
+  var plugins = [
+      'org.apache.cordova.device',
+      'org.apache.cordova.device-motion',
+    ];
 
   plugins.forEach(function(id) {
     var tests;
