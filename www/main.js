@@ -87,6 +87,7 @@ function runAutoTests() {
   var plugins = [
       'org.apache.cordova.device',
       'org.apache.cordova.device-motion',
+      'org.chromium.storage'
     ];
 
   plugins.forEach(function(id) {
@@ -94,6 +95,7 @@ function runAutoTests() {
     try {
       tests = cordova.require(id + '.tests');
     } catch(ex) {
+      logger('Failed to load tests: ' + id);
       return;
     }
     tests.init();
